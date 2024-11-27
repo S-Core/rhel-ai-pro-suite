@@ -1,0 +1,9 @@
+name: "recursive character chunker Plugin"
+alias: "recursive-character-chunker -plugin"
+runtime:
+  main: "plugin.py"
+  tests:
+    - "tests/core.py"
+description: "recursive character chunker  plugin template"
+version: "0.0.1"
+requirements:

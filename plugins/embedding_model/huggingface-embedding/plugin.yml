@@ -1,0 +1,9 @@
+name: 'Huggginface Embedding Plugin'
+alias: 'huggingface-embedding-plugin'
+runtime:
+  main: 'plugin.py'
+  tests:
+    - 'tests/core.py'
+description: 'Multilingual E5 Large Instruct Embeddings plugin template'
+version: '0.0.1'
+requirements:

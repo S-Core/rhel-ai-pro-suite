@@ -1,0 +1,9 @@
+name: "document filter Plugin"
+alias: "doucment-filter-plugin"
+runtime:
+  main: "plugin.py"
+  tests:
+    - "tests/plugin_test.py"
+description: "document filter plugin template"
+version: "0.0.1"
+requirements:

@@ -1,0 +1,78 @@
+logging:
+  # Setting the log level: CRITICAL, ERROR, WARNING, INFO, DEBUG
+  level: 'DEBUG'
+
+plugin_dir: ./plugins
+
+http:
+  host: 0.0.0.0
+  port: 8888
+
+rag:
+  strict_answer: true
+  source_visible: true
+  context_visible: true
+  search_size: 3
+  context_size: 2
+  min_similarity: 0.01
+  retrieval_type: hybrid    # lexical, semantic, hybrid
+
+demo:
+  chat_playground:
+    enabled: true
+    host: localhost
+    port: 8503
+  evaluation_dashboard:
+    enabled: true
+    host: localhost
+    port: 8504
+
+plugins:
+  chunker:
+    recursive-character:
+      chunk_size: 512
+      chunk_overlap: 60
+      tiktoken_encoding_name: cl100k_base
+
+  filter:
+    document:
+      - path: context.metadata._source.metadata.status
+        term: match #not_match, greater_than, less_than
+        value:
+          - trained
+
+  embedding_model:
+    huggingface-embedding:
+      model_path: intfloat/multilingual-e5-large-instruct
+      device: cpu
+
+  vector_store:
+    elasticsearch:
+      hosts: [ "http://127.0.0.1:9200" ]
+      index_name: ai_odyssey_demo_documents-000001
+      embedding_model: huggingface-embedding
+
+  reranker:
+    bge-reranker:
+      model_path: BAAI/bge-reranker-v2-m3
+
+  # Example setup for LLM running on ollama
+  llm:
+    remote:
+      host: http://127.0.0.1:8000
+      model: merlinite-7b-lab-Q4_K_M.gguf
+
+  evaluation:
+    rhel-ai:
+      llm: remote
+      model: merlinite-7b-lab-Q4_K_M.gguf
+      testset_index_name: ai_odyssey_demo_testset-000001
+      evaluation_index_name: ai_odyssey_demo_evaluation-000001
+      metrics:
+        - faithfulness
+        - answer_relevancy
+        - context_precision
+        - context_recall
+        - context_entity_recall
+        - noise_sensitivity_relevant
+        - answer_similarity

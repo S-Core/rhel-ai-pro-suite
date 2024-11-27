@@ -1,0 +1,9 @@
+name: "Evaluation RHEL Demo RAGAS Plugin"
+alias: "evaluation-rhel-demo-ragas-plugin"
+runtime:
+  main: "plugin.py"
+  tests:
+    - "tests/core.py"
+description: "Evaluation RHEL Demo RAGAS Plugin template"
+version: "0.0.1"
+requirements:

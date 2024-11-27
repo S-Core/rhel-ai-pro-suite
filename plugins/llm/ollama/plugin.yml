@@ -1,0 +1,9 @@
+name: 'Ollama LLM Plugin'
+alias: 'Ollama-llm-plugin'
+runtime:
+  main: 'plugin.py'
+  tests:
+    - 'tests/core.py'
+description: 'Remote Ollama LLM plugin template'
+version: '0.0.1'
+requirements:

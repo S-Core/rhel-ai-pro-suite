@@ -1,0 +1,9 @@
+name: "Vector Store Elasticsearch Plugin"
+alias: "vector-store-elasticsearch-plugin"
+runtime:
+  main: "plugin.py"
+  tests:
+    - "tests/core.py"
+description: "Vector Store Elasticsearch plugin template"
+version: "0.0.1"
+requirements:

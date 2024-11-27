@@ -1,0 +1,7 @@
+name: "BGE Reranker Plugin"
+alias: "bge-reranker-plugin"
+runtime:
+  main: "plugin.py"
+description: "BGE Reranker plugin template"
+version: "0.0.1"
+requirements:

@@ -1,0 +1,9 @@
+name: 'Remote LLM Plugin'
+alias: 'remote-llm-plugin'
+runtime:
+  main: 'plugin.py'
+  tests:
+    - 'tests/core.py'
+description: 'Remote LLM plugin template'
+version: '0.0.1'
+requirements:
