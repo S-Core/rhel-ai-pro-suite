@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, ConnectionError, NotFoundError
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -58,7 +58,12 @@ class DashboardApp:
         self.config = config
         self.setup_page_config()
         self.setup_styling()
-        self.df = self.load_data_from_elasticsearch()
+        self.es_client = None
+        self.df = None
+        self.validate_elasticsearch_connection()
+        if self.es_client:
+            self.validate_indices()
+            self.df = self.load_data_from_elasticsearch()
 
     def setup_page_config(self):
         st.set_page_config(
@@ -105,12 +110,12 @@ class DashboardApp:
             unsafe_allow_html=True,
         )
 
-    @st.cache_data
-    def load_data_from_elasticsearch(_self):
-        es_config = _self.config.plugins.vector_store.elasticsearch
+    def validate_elasticsearch_connection(self):
+        """Validates the Elasticsearch connection and displays a warning if connection fails."""
+        es_config = self.config.plugins.vector_store.elasticsearch
         client_kwargs = {
             "hosts": es_config.hosts[0],
-            "request_timeout": 600,
+            "request_timeout": 60,  # Set timeout to 60 seconds
             "verify_certs": False,
         }
 
@@ -120,12 +125,66 @@ class DashboardApp:
         if es_config.ca_certs is not None:
             client_kwargs["ca_certs"] = str(Path(es_config.ca_certs))
 
-        es = Elasticsearch(**client_kwargs)
+        try:
+            self.es_client = Elasticsearch(**client_kwargs)
+            if not self.es_client.ping():
+                st.error(
+                    "⚠️ Cannot connect to Elasticsearch. Please check if the server is running."
+                )
+                return False
+        except ConnectionError:
+            st.error(
+                "⚠️ Failed to connect to Elasticsearch. Please check your connection settings."
+            )
+            return False
+        return True
+
+    def validate_indices(self):
+        """Checks if required indices exist and displays warnings for missing indices."""
+        if not self.es_client:
+            return False
+
+        eval_config = next(iter(self.config.plugins.evaluation.values()))
+        missing_indices = []
+
+        try:
+            if not self.es_client.indices.exists(index=eval_config.testset_index_name):
+                missing_indices.append(eval_config.testset_index_name)
+            if not self.es_client.indices.exists(
+                index=eval_config.evaluation_index_name
+            ):
+                missing_indices.append(eval_config.evaluation_index_name)
+
+            if missing_indices:
+                print(
+                    f"⚠️ The following indices were not found: {', '.join(missing_indices)}"
+                )
+                return False
+        except Exception as e:
+            st.error(f"⚠️ Error occurred while checking indices: {str(e)}")
+            return False
+        return True
+
+    @st.cache_data
+    def load_data_from_elasticsearch(_self):
+        """Loads data from Elasticsearch and handles potential errors."""
+        if not _self.es_client:
+            return pd.DataFrame()  # Return empty DataFrame
 
         eval_config = next(iter(_self.config.plugins.evaluation.values()))
         query = {"query": {"match_all": {}}, "size": 10000}
 
-        response = es.search(index=eval_config.evaluation_index_name, body=query)
+        try:
+            response = _self.es_client.search(
+                index=eval_config.evaluation_index_name, body=query
+            )
+
+        except NotFoundError:
+            print(f"⚠️ Index {eval_config.evaluation_index_name} not found.")
+            return pd.DataFrame()
+        except Exception as e:
+            print(f"⚠️ Error occurred while loading data: {str(e)}")
+            return pd.DataFrame()
 
         records = []
         for hit in response["hits"]["hits"]:
@@ -301,11 +360,19 @@ class DashboardApp:
         )
 
     def run(self):
+        """Runs the dashboard with data validation."""
         self.render_header()
-        self.render_domain_overview()
-        self.render_detailed_analysis()
-        self.render_domain_performance()
-        self.render_footer()
+
+        # Only proceed with visualization if data is available
+        if self.df is not None and not self.df.empty:
+            self.render_domain_overview()
+            self.render_detailed_analysis()
+            self.render_domain_performance()
+            self.render_footer()
+        else:
+            st.warning(
+                "⚠️ Unable to load data. Please check Elasticsearch connection and indices."
+            )
 
 
 def main():

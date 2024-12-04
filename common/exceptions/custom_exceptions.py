@@ -34,7 +34,7 @@ class ErrorCode(Enum):
     #update document exception
     UPDATE_DOCUMENT_UNKNOWN= (31999, "Update Document Fail!")
     #evaluation exception
-    EVALUATION_GENERATOR_LLM_NOT_FOUND = (40001, "Generator LLM Model Not Found!")
+    EVALUATION_LLM_INFO_SETUP_FAIL = (40001, "Failed to Set Up LLM information")
     EVALUATION_DOCUMENTS_SIZE_EXCEPTION = (40002, "The Number of Documents is less than 5!")
     EVALUATION_TESTSET_SIZE_EXCEPTION = (40003, "The Number of Testset is less than 5!")
     EVALUATION_CONTENT_SUMMARIZE_EXCEPTION = (40004, "Summarize Content Fail!")
@@ -51,4 +51,3 @@ class OSSRagException(Exception):
             self.detail = str(internal_error.message) if detail is None else detail
         else:
             self.detail = str(original_exception)
-

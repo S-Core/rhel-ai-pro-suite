@@ -195,7 +195,7 @@ class ChatBot:
         question: str,
         temperature: float = 0.7,
         instruction: Optional[str] = None,
-        timeout: float = 60.0,
+        timeout: float = 240.0,
     ) -> ChatResponse:
         """Get streaming response from the model with temperature and instruction"""
         messages = []

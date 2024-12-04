@@ -370,7 +370,7 @@ class APIManager:
             yield b'data: {"choices":[{"delta":{"content":"' + chunk.encode(
                 "utf-8"
             ) + b'"},"finish_reason":null,"index":0}]}\n\n'
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.01)
         yield b'data: {"choices":[{"delta":{},"finish_reason":"stop","index":0}]}\n\n'
 
     def _get_rag_source(self, docs_with_score: List[Tuple[Document, float]]) -> bytes:

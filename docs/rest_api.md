@@ -1,30 +1,31 @@
 # RHEL AI Pro Suite APIs
+RHEL AI Pro Suite에서 제공하는 REST API에 대해 설명합니다.
 
 ## POST `/v1/documents/texts`
-전달되는 document(text)를 VectorStore에 색인하는 API
+Text를 Vector DB에 색인하는 API
 
 ### Request
 #### Body
 - `content`: (Required) 청크 및 임베딩 변환이 될 원본 텍스트
-- `metadata`: (Required) document 메타 데이터
-  - `source`: (Optional) 텍스트 출처
-  - `name`: (Optional) document 이름
-  - `domain`: (Required) taxonomy 분야
-  - `author`: (Optional) 작성자
-- `index_name`: (Optional) 색인 대상 인덱스 이름. Default: `설정 파일내 vector_store의 index_name`
+- `metadata`: (Required) 청크 관련 메타 데이터
+    - `source`: (Optional) 텍스트 출처
+    - `name`: (Optional) document 이름
+    - `domain`: (Required) taxonomy 분야
+    - `author`: (Optional) 작성자
+- `index_name`: (Optional) 색인 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.vector_store.[vector_db명].index_name`을 참조함.
 
 #### Example
 ```bash
-curl -X POST http://localhost:8888/v1/documents/texts -H "Content-Type: application/json" -d "{
-    \"content\": \"Zerobaseone (RR: Jerobeiseuwon; stylized in all caps; abbreviated as ZB1) is a South Korean boy band formed through Mnet's reality ...\",
-    \"metadata\": {
-        \"source\": \"https://test-example.com/10\",
-        \"name\": \"k-pop singer\",
-        \"domain\": \"k-pop\",
-        \"author\" : \"Michael\"
+curl -X POST http://localhost:8888/v1/documents/texts -H "Content-Type: application/json" -d '{
+    "content": "Zerobaseone (RR: Jerobeiseuwon; stylized in all caps; abbreviated as ZB1) is a South Korean boy band ...",
+    "metadata": {
+        "source": "https://test-example.com/10",
+        "name": "k-pop singer",
+        "domain": "k-pop",
+        "author" : "Michael"
     },
-    \"index_name\": \"ai_odyssey_demo_documents-000001\"
-}"
+    "index_name": "ai_odyssey_demo_documents-000001"
+}'
 ```
 
 ### Response
@@ -48,11 +49,11 @@ curl -X POST http://localhost:8888/v1/documents/texts -H "Content-Type: applicat
 ```
 
 ## POST `/v1/documents/files`
-전달되는 document(file)를 VectorStore에 색인하는 API
+Text 형식의 document file을 Vector DB에 색인하는 API
 
 ### Request
 #### Parameter
-- `index_name`: (Optional) 색인 대상 인덱스 이름. Default: `설정 파일내 vector_store의 index_name`
+- `index_name`: (Optional) 색인 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.vector_store.[vector_db명].index_name`을 참조함.
 
 #### Body
 - `file`: (Required) text 형태의 파일
@@ -98,35 +99,46 @@ QnA 테스트 셋 생성 및 qna.yaml 파일 내용을 전달하는 API
 
 ### Request
 #### Body
-- `target_model`: (Optional) QnA 테스트 셋을 생성할 LLM. Default: `설정 파일내 evaluation의 model`
+- `target_model`: (Optional) QnA 테스트 셋을 생성할 LLM. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.evaluation.rhel-ai.model`을 참조함.
+- `critic_llm`: (Optional) 비평가 LLM 접속 정보 설정. 만약 정의되어 있지 않으면, 설정 파일내 plugins.evaluation.rhel-ai.critic_llm을 참조함.
+    - `host`: LLM 서버 접속 정보
+    - `model`: 검증 대상 LLM 모델명
+    - `headers`: (Optional) LLM과 HTTP 통신 시 header 로 전달하는 값들
 - `testset_size`: (Optional) 조회된 Content 1개당 생성할 QnA 테스트 셋 개수. Default: `3`
 - `domain`: (Required) taxonomy 분야
 - `document_index_name`: (Optional) 컨텐츠 조회 대상 인덱스 이름. Default: `설정 파일내 vector_store의 index_name`
-- `testset_index_name`: (Optional) QA 테스트 셋 색인 대상 인덱스 이름. Default: `설정 파일내 evaluation의 testset_index_name`
+- `testset_index_name`: (Optional) QA 테스트 셋 색인 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.vector_store.[vector_db명].index_name`을 참조함.
 - `qna_yaml`: (Required) QnA yaml 파일 설정
-  - `version`: (Optional) 버전. Default: `3`
-  - `created_by`: (Required) Git 사용자 이름
-  - `document_outline`: (Optional) 문서의 개요. Default: `LLM을 통해 컨텐츠를 요약`
-  - `repo`: (Required) 마크다운 파일을 보관하는 repository의 URL
-  - `commit`: (Required) 마크다운 파일과 함께 리포지토리에 있는 커밋의 SHA
-  - `patterns`: (Required) 리포지토리에 있는 마크다운 파일을 지정
+    - `version`: (Optional) 버전. Default: `3`
+    - `created_by`: (Required) Git 사용자 이름
+    - `document_outline`: (Optional) 문서의 개요. 만약 정의되어 있지 않으면, LLM에 본문을 전달하여 요약문을 생성함.
+    - `repo`: (Required) 마크다운 파일을 보관하는 repository의 URL
+    - `commit`: (Required) 마크다운 파일과 함께 리포지토리에 있는 커밋의 SHA
+    - `patterns`: (Required) 리포지토리에 있는 마크다운 파일을 지정
 
 #### Example
 ```bash
-curl -X POST http://localhost:8888/v1/qna/generate -H "Content-Type: application/json" -d "{
-    \"target_model\": \"/home/[user-id]/.cache/instructlab/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf\",
-    \"testset_size\": 3,
-    \"domain\": \"k-pop\",
-    \"document_index_name\": \"ai_odyssey_demo_documents-000001\",
-    \"testset_index_name\": \"ai_odyssey_demo_testset-000001\",
-    \"qna_yaml\": {
-        \"version\": 3,
-        \"created_by\": \"test_author\",
-        \"repo\": \"https://github.com/juliadenham/Summit_knowledge\",
-        \"commit\": \"5f7158a5ce83c4ff493bfe341fe31ecad64ff697\",
-        \"patterns\": [\"chickadee.md\"]
+curl -X POST http://localhost:8888/v1/qna/generate -H "Content-Type: application/json" -d '{
+    "target_model": "/home/[user-id]/.cache/instructlab/models/merlinite-7b-lab-Q4_K_M.gguf",
+    "critic_llm": {
+        "model": "/home/[user-id]/.cache/instructlab/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "host": "http://127.0.0.1:8000",
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    },
+    "testset_size": 3,
+    "domain": "k-pop",
+    "document_index_name": "ai_odyssey_demo_documents-000001",
+    "testset_index_name": "ai_odyssey_demo_testset-000001",
+    "qna_yaml": {
+        "version": 3,
+        "created_by": "test_author",
+        "repo": "https://github.com/juliadenham/Summit_knowledge",
+        "commit": "5f7158a5ce83c4ff493bfe341fe31ecad64ff697",
+        "patterns": ["chickadee.md"]
     }
-}"
+}'
 ```
 
 ### Response:
@@ -174,28 +186,28 @@ document:
 ```
 
 ## PATCH `/v1/documents`
-Document 메타데이터 업데이트
+Document 메타 데이터 업데이트
 
 ### Request
 #### Parameter
-- `index_name`: (Optional) 색인 대상 인덱스 이름. Default: `설정 파일내 vector_store의 index_name`
+- `index_name`: (Optional) 색인 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.vector_store.[vector_db명].index_name`을 참조함.
 
 #### Body
 - `filter`:
-  - `domain`: (Required) document 유형
+    - `domain`: (Required) document 유형
 - `update`:
-  - `status`: (Required) document 상태값. 현재는 "trained"만 지원
+    - `status`: (Required) document 상태값. 현재는 "trained"만 지원
 
 #### Example
 ```bash
-curl -X PATCH http://localhost:8888/v1/documents -H "Content-Type: application/json" -d "{
-    \"filter\": {
-        \"domain\": \"k-pop\"
+curl -X PATCH http://localhost:8888/v1/documents -H "Content-Type: application/json" -d '{
+    "filter": {
+        "domain": "k-pop"
     },
-    \"update\": {
-        \"status\": \"trained\"
+    "update": {
+        "status": "trained"
     }
-}"
+}'
 ```
 
 ### Response
@@ -211,33 +223,44 @@ curl -X PATCH http://localhost:8888/v1/documents -H "Content-Type: application/j
 #### Failure (500)
 ```json
 {
-  "TID": "6b36673d-ff2e-493c-8e00-ebed52dc5721",
-  "error code": 20999,
-  "message": "VectorStore Process Fail",
-  "detail": "NotFoundError(404, 'index_not_found_exception', 'no such index [aaaa]', aaaa, index_or_alias)"
+    "TID": "6b36673d-ff2e-493c-8e00-ebed52dc5721",
+    "error code": 20999,
+    "message": "VectorStore Process Fail",
+    "detail": "NotFoundError(404, 'index_not_found_exception', 'no such index [aaaa]', aaaa, index_or_alias)"
 }
 ```
 
 ## POST `/v1/qna/evaluate`
-QnA 테스트 셋 평가 및 평가 결과를 VectorStore에 색인하는 API
+QnA 테스트 셋 평가 및 평가 결과를 Vector DB에 색인하는 API
 
 ### Request
 #### Body
-- `target_model`: (Optional) 답변(answer)을 생성할 LLM. Default: `설정 파일내 evaluation의 model`
+- `target_model`: (Optional) 답변(answer)을 생성할 LLM.
+- `critic_llm`: (Optional) 비평가 LLM 접속 정보 설정. 만약 정의되어 있지 않으면, 설정 파일내 plugins.evaluation.rhel-ai.critic_llm을 참조함.
+    - `host`: LLM 서버 접속 정보
+    - `model`: 검증 대상 LLM 모델명
+    - `headers`: (Optional) LLM과 HTTP 통신 시 header 로 전달하는 값들
 - `k`: (Optional) RAG 파이프라인의 context 사이즈. Default: `3`
 - `domain`: (Required) taxonomy 분야
-- `testset_index_name`: (Optional) QnA 테스트 셋 조회 대상 인덱스 이름. Default: `설정 파일내 evaluation의 testset_index_name`
-- `evaluation_index_name`: (Optional) 생성된 평가 결과 색인 대상 인덱스 이름. Default: `설정 파일내 evaluation의 evaluation_index_name`
+- `testset_index_name`: (Optional) QnA 테스트 셋 조회 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.evaluation.rhel-ai.testset_index_name`을 참조함.
+- `evaluation_index_name`: (Optional) 생성된 평가 결과 색인 대상 인덱스 이름. 만약 정의되어 있지 않으면, 설정 파일내 `plugins.evaluation.rhel-ai.testset_index_name`을 참조함.
 
 #### Example
 ```bash
-curl -X POST http://localhost:8888/v1/qna/evaluate -H "Content-Type: application/json" -d "{
-    \"target_model\": \"/home/[user-id]/.cache/instructlab/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf\",
-    \"k\": 1,
-    \"domain\": \"k-pop\",
-    \"testset_index_name\": \"ai_odyssey_demo_testset-000001\",
-    \"evaluation_index_name\": \"ai_odyssey_demo_evaluation-000001\"
-}"
+curl -X POST http://localhost:8888/v1/qna/evaluate -H "Content-Type: application/json" -d '{
+    "target_model": "/home/[user-id]/.cache/instructlab/models/merlinite-7b-lab-Q4_K_M.gguf",
+    "critic_llm": {
+        "model": "/home/[user-id]/.cache/instructlab/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "host": "http://127.0.0.1:8000",
+        "headers": {
+            "Content-Type": "application/json"
+        }
+    },
+    "k": 1,
+    "domain": "k-pop",
+    "testset_index_name": "ai_odyssey_demo_testset-000001",
+    "evaluation_index_name": "ai_odyssey_demo_evaluation-000001"
+}'
 ```
 
 ### Response
@@ -290,5 +313,6 @@ curl -X POST http://localhost:8888/v1/qna/evaluate -H "Content-Type: application
     "TID":"175ef959-d97f-4641-a4b0-5b78fb1c021b",
     "error code":41999,
     "message":"Evaluation Fail!",
-    "detail":"evaluation exception"}
+    "detail":"evaluation exception"
+}
 ```

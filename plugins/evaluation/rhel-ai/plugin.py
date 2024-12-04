@@ -31,36 +31,49 @@ class Plugin(PluginCore):
 
     def __init__(self, logger: Logger) -> None:
         super().__init__(logger)
-        self.app_config = AppConfig().get()
+        self._app_config = AppConfig().get()
 
     def invoke(self, config_data: dict):
-        self.config = config_data
+        self._config = config_data
         return self
 
     def registerAPIs(self, node: Node):
         router = APIRouter()
 
         if self.evaluator is None:
+            default_llm = dict(self._app_config["plugins"]["llm"][self._config["llm"]])
+            default_llm_model = default_llm.get("model", "")
+            default_llm_host = default_llm["host"]
+            default_llm_headers = default_llm.get("headers", node.get_llm().headers)
+
+            critic_llm = {}
+            critic_llm_config = self._config.get("critic_llm")
+            if critic_llm_config is None:
+                critic_llm["headers"] = default_llm_headers
+            else:
+                critic_llm["headers"] = dict(critic_llm_config).get("headers", {})
+
             self.evaluator = Evaluator(
                 self._logger,
                 chunk_size=node.get_chunker().chunk_size,
                 embedding=node.get_embedding_model(),
                 vector_store=node.get_vector_store(),
                 llm=node.get_llm(),
-                critic_llm={
-                    "name": self.config.get(
-                        "model", json.loads(node.get_llm().models())["data"][0]["id"]
-                    ),
-                    "url": self.app_config["plugins"]["llm"][self.config["llm"]][
-                        "host"
-                    ],
-                    "headers": node.get_llm().headers,
+                generator_llm={
+                    "name": default_llm_model,
+                    "url": default_llm_host,
+                    "headers": default_llm_headers,
                 },
-                metric_names=self.config["metrics"],
+                critic_llm={
+                    **critic_llm,
+                    "name": dict(self._config.get("critic_llm", {})).get("model", default_llm_model),
+                    "url": dict(self._config.get("critic_llm", {})).get("host", default_llm_host),
+                },
+                metric_names=self._config["metrics"],
                 retrieval_type=node._api_manager.options["retrieval_type"],
                 document_index_name=node.get_vector_store().index_name,
-                testset_index_name=self.config["testset_index_name"],
-                evaluation_index_name=self.config["evaluation_index_name"],
+                testset_index_name=self._config["testset_index_name"],
+                evaluation_index_name=self._config["evaluation_index_name"],
             )
 
         router.add_api_route("/v1/qna/generate", self._generate_testset, methods=["POST"])

@@ -65,7 +65,9 @@ plugins:
   evaluation:
     rhel-ai:
       llm: remote
-      model: merlinite-7b-lab-Q4_K_M.gguf
+      critic_llm:
+        host: http://127.0.0.1:8000
+        model: mistral-7b-instruct-v0.2.Q4_K_M.gguf
       testset_index_name: ai_odyssey_demo_testset-000001
       evaluation_index_name: ai_odyssey_demo_evaluation-000001
       metrics:

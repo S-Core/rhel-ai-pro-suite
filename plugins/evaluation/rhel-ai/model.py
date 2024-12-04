@@ -3,8 +3,15 @@ from pydantic import BaseModel, validator
 from typing import Optional, List, Dict
 
 
+class CriticLLM(BaseModel):
+    host: str
+    model: str
+    headers: Optional[Dict] = {}
+
+
 class RequestModel(BaseModel):
     target_model: Optional[str]
+    critic_llm: Optional[CriticLLM]
 
 
 class QnaYamlRequestModel(BaseModel):

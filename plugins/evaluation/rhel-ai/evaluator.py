@@ -1,6 +1,7 @@
 import re
 import json
 import yaml
+import copy
 from io import StringIO
 import numpy as np
 
@@ -52,7 +53,6 @@ from ragas.metrics import (
     noise_sensitivity_relevant,
     answer_similarity
 )
-from ragas.run_config import RunConfig
 
 
 METRIC_MAPPING = {
@@ -79,6 +79,8 @@ Content: {content}"""
 
 
 class Evaluator:
+    _generator_llm_info: Dict
+    _critic_llm_info: Dict
     
     def __init__(
         self,
@@ -86,6 +88,7 @@ class Evaluator:
         embedding: Embeddings,
         vector_store: VectorStorePluginCore,
         llm: LLMPluginCore,
+        generator_llm: Dict[str, Any],
         critic_llm: Dict[str, Any],
         metric_names: List[str],
         retrieval_type: str,
@@ -99,6 +102,7 @@ class Evaluator:
         self.embedding = embedding
         self.vector_store = vector_store
         self.llm = llm
+        self.generator_llm = generator_llm
         self.critic_llm = critic_llm
         self.metric_names = metric_names
         self.metric_modules = [
@@ -113,14 +117,14 @@ class Evaluator:
         self.evaluation_index_name = evaluation_index_name
 
     def generate_testset(self, tid: str, request: TestSetRequestModel) -> StreamingResponse:
-        target_model = self._get_target_model(tid, request)
+        self._set_llm_info_from_request(tid, request)
         target_documents = self._get_target_testset_documents(tid, request)
-        testsets = self._generate_testsets_from_documents(tid, request, target_model, target_documents)
+        testsets = self._generate_testsets_from_documents(tid, request, target_documents)
         if request.qna_yaml.document_outline is None:
-            document_outline = self._summarize_content(tid, target_model, target_documents)
+            document_outline = self._summarize_content(tid, target_documents)
         else:
             document_outline = request.qna_yaml.document_outline
-        _, testset_documents, qna_yaml_model = self._get_processed_results(tid, request, testsets, target_model, document_outline)
+        _, testset_documents, qna_yaml_model = self._get_processed_results(tid, request, testsets, document_outline)
 
         testset_index_name = (
             request.testset_index_name
@@ -136,6 +140,24 @@ class Evaluator:
         buffer = StringIO(yaml_data)
         
         return StreamingResponse(buffer, media_type="application/json")
+
+    def _set_llm_info_from_request(self, tid: str, request: RequestModel):
+        try:
+            self._generator_llm_info = copy.deepcopy(self.generator_llm)
+            self._generator_llm_info["name"] = (
+                request.target_model
+                if request.target_model is not None
+                else self.generator_llm["name"]
+            )
+
+            self._critic_llm_info = copy.deepcopy(self.critic_llm)
+            if request.critic_llm is not None:
+                self._critic_llm_info["name"] = request.critic_llm.model
+                self._critic_llm_info["url"] = request.critic_llm.host
+                self._critic_llm_info["headers"] = request.critic_llm.headers
+        except Exception as e:
+            self._logger.error(f"TID: {tid}, {e}", exc_info=True)
+            raise OSSRagException(ErrorCode.EVALUATION_LLM_INFO_SETUP_FAIL, e) from e
 
     def _make_content_search_query(self, domain: str) -> Dict:
         query_dsl = {}
@@ -180,7 +202,7 @@ class Evaluator:
 
         return target_documents
 
-    def _generate_testsets_from_documents(self, tid: str, request: TestSetRequestModel, target_model: str, target_documents: List):
+    def _generate_testsets_from_documents(self, tid: str, request: TestSetRequestModel, target_documents: List):
         documents = [
             Document(
                 page_content=document["text"],
@@ -191,15 +213,8 @@ class Evaluator:
 
         system_prompt, _ = self._get_prompts(self._system_prompt)
         generator = TestsetGenerator.from_langchain(
-            generator_llm=CompletionLLM(
-                {
-                    "name": target_model,
-                    "url": self.critic_llm["url"],
-                    "headers": self.critic_llm["headers"],
-                },
-                system_prompt,
-            ),
-            critic_llm=CompletionLLM(self.critic_llm, system_prompt),
+            generator_llm=CompletionLLM(self._generator_llm_info, system_prompt),
+            critic_llm=CompletionLLM(self._critic_llm_info, system_prompt),
             embeddings=self.embedding,
             chunk_size=self.chunk_size,
         )
@@ -232,7 +247,7 @@ class Evaluator:
         self._logger.debug(f"Extracted Sentence: {sentence}")
         return sentence
 
-    def _summarize_content(self, tid: str, target_model: str, target_documents: List) -> str:
+    def _summarize_content(self, tid: str, target_documents: List) -> str:
         target_content = target_documents[0]["text"]
 
         system_prompt, _ = self._get_prompts(type="SUMMARY")
@@ -243,7 +258,7 @@ class Evaluator:
         
         prompt_str = prompt_template.format(content=target_content)
 
-        llm_request = LLMRequestModel(prompt=prompt_str, model=target_model)
+        llm_request = LLMRequestModel(prompt=prompt_str, model=self._generator_llm_info["name"])
 
         try:
             response = json.loads(self.llm.completion(llm_request))
@@ -283,7 +298,7 @@ class Evaluator:
         
         return qna_yaml_model
     
-    def _get_processed_results(self, tid: str, request: TestSetRequestModel, testsets: List, target_model: str, document_outline: str):
+    def _get_processed_results(self, tid: str, request: TestSetRequestModel, testsets: List, document_outline: str):
         qna_yaml_model = self._get_qna_yaml_model(request, document_outline)
 
         testset_results = []
@@ -307,8 +322,8 @@ class Evaluator:
                         metadata.pop("status")
                     metadata["domain"] = request.domain
                     metadata["referenceContexts"] = contexts
-                    metadata["generatorLLM"] = target_model
-                    metadata["criticLLM"] = self.critic_llm.get("name")
+                    metadata["generatorLLM"] = self._generator_llm_info["name"]
+                    metadata["criticLLM"] = self._critic_llm_info["name"]
                     metadata["timestamp"] = datetime.now().timestamp()
 
                     testset_results.append(
@@ -330,19 +345,6 @@ class Evaluator:
             raise OSSRagException(ErrorCode.EVALUATION_TESTSET_RESULT_EXCEPTION, e) from e
 
         return testset_results, testset_documents, qna_yaml_model
-    
-    def _get_target_model(self, tid: str, request: RequestModel) -> str:
-        try:
-            target_model = (
-                request.target_model
-                if request.target_model is not None
-                else json.loads(self.llm.models())["data"][0]["id"]
-            )
-        except Exception as e:
-            self._logger.error(f"TID: {tid}, {e}", exc_info=True)
-            raise OSSRagException(ErrorCode.EVALUATION_GENERATOR_LLM_NOT_FOUND, e) from e
-
-        return target_model
 
     def _make_evaluation_search_query(self, domain: str) -> Dict:
         query_dsl = {}
@@ -377,10 +379,10 @@ class Evaluator:
         return target_documents
     
     def evaluate(self, tid: str, request: EvaluationRequestModel) -> EvaluationResponseModel:
-        target_model = self._get_target_model(tid, request)
+        self._set_llm_info_from_request(tid, request)
         target_documents = self._get_target_evaluation_documents(tid, request)
-        dataset = self._generate_dataset(tid=tid, documents=target_documents, target_model=target_model, k=request.k)
-        testset_results, testset_documents = self._get_evaluation_result(tid=tid, dataset=dataset, documents=target_documents, target_model=target_model)
+        dataset = self._generate_dataset(tid=tid, documents=target_documents, k=request.k)
+        testset_results, testset_documents = self._get_evaluation_result(tid=tid, dataset=dataset, documents=target_documents)
 
         evaluation_index_name = (
             request.evaluation_index_name
@@ -394,13 +396,13 @@ class Evaluator:
             status="ok",
             message=EvaluationMessageModel(
                 data=testset_results,
-                target_model=target_model,
-                critic_model=self.critic_llm["name"],
+                target_model=self._generator_llm_info["name"],
+                critic_model=self._critic_llm_info["name"],
             ),
         )
     
     def _generate_dataset(
-        self, tid: str, documents: List, target_model: str, k: int
+        self, tid: str, documents: List, k: int
     ) -> Dataset:
         data = {
             "question": [],
@@ -442,7 +444,7 @@ class Evaluator:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt_str},
                     ],
-                    model=target_model,
+                    model=self._generator_llm_info["name"],
                 )
                 response = json.loads(self.llm.chat_completions(llm_request))
                 data["answer"].append(response["choices"][0]["message"]["content"])
@@ -478,12 +480,12 @@ Answer:
             return -1.0
     
     def _get_evaluation_result(
-        self, tid: str, dataset: Dataset, documents: List, target_model: str
+        self, tid: str, dataset: Dataset, documents: List
     ) -> List[EvaluationResultModel]:
         system_prompt, _ = self._get_prompts(self._system_prompt)
         result = evaluate(
             dataset=dataset,
-            llm=CompletionLLM(self.critic_llm, system_prompt),
+            llm=CompletionLLM(self._critic_llm_info, system_prompt),
             embeddings=self.embedding,
             metrics=self.metric_modules,
             raise_exceptions=False,
@@ -497,7 +499,7 @@ Answer:
         testset_documents = []
         try:
             for i in range(len(dataset_dict["question"])):
-                testset_result, testset_document = self._generate_evaluation_result(dataset_dict, scores_dict, documents, target_model, i)
+                testset_result, testset_document = self._generate_evaluation_result(dataset_dict, scores_dict, documents, i)
                 testset_results.append(testset_result)
                 testset_documents.append(testset_document)
         except Exception as e:
@@ -511,7 +513,6 @@ Answer:
         dataset_dict: Dict[str, List],
         scores_dict: Dict[str, List],
         documents: List,
-        target_model: str,
         index: int,
     ) -> EvaluationResultModel:
         question = dataset_dict["question"][index]
@@ -524,8 +525,8 @@ Answer:
             ):
                 metadata = document["metadata"]
 
-        metadata["generatorLLM"] = target_model
-        metadata["criticLLM"] = self.critic_llm.get("name")
+        metadata["generatorLLM"] = self._generator_llm_info["name"]
+        metadata["criticLLM"] = self._critic_llm_info["name"]
         metadata["timestamp"] = datetime.now().timestamp()
 
         testset_result = EvaluationResultModel(
